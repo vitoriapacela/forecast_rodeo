@@ -4,7 +4,7 @@ Code for reproducing the results in Hwang et al. [Improving Subseasonal Forecast
 
 ### Environment and packages
 
-The code was tested using Python 2.7 on Linux and macOS, and Anaconda 2.3.0. The following should be run to install the necessary packages:
+The code was tested using Python 3 on Linux, and Miniconda 3 The following should be run to install the necessary packages:
 
 `conda install --channel https://conda.anaconda.org/conda-forge pygrib`
 
@@ -27,6 +27,12 @@ The code was tested using Python 2.7 on Linux and macOS, and Anaconda 2.3.0. The
 `conda install -c conda-forge hdf5=1.8.18`
 
 `conda install -c conda-forge pytables`
+
+`conda install matplotlib`
+
+`conda install h5py`
+
+`conda install seaborn`
 
 ### Getting started
 
