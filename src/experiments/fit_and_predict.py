@@ -103,7 +103,7 @@ def lasso_fit_and_predict(df, x_cols=None, base_col=None, clim_col=None,
     test_df = df.loc[df.start_date > last_train_date].dropna(
         subset=x_cols+[clim_col,base_col])
     fit_model = model.fit(X = train_df[x_cols], y = train_df['target'])
-    print np.round(fit_model.coef_, 4)
+    print(np.round(fit_model.coef_, 4))
     # Fit model and return predicted anomalies, true anomalies, and climatology
     return pd.DataFrame(
         {'pred': fit_model.predict(test_df[x_cols]) + test_df[base_col].values - test_df[clim_col].values,

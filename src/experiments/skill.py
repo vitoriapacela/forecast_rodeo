@@ -11,7 +11,7 @@ def printv(arg, verbose = True):
        Print arg if verbose = True; otherwise, print nothing
     """
     if verbose:
-        print arg
+        print(arg)
 
 def get_col_skill(data, gt_anomaly_col, forecast_anomaly_col,
                   time_average = True, date_col = "start_date",
@@ -294,13 +294,33 @@ def get_similar_years_hindcast(gt_col, target_horizon, target_date = pd.to_datet
                         ((last_date.replace(year=yr) - df.start_date) > timedelta(days=0)))
         df_yr = df[rows_to_keep]
         # Only proceed if all margin_days days are available
+        print("df_target_yr")
+        print(df_target_yr.head())
+        print("----")
+        print("dr_yr")
+        print(df_yr[[anom_col]].head())
+        print(len(df_target_yr))
+        print(len(df_yr[[anom_col]]))
+
         if df_yr.start_date.unique().size == margin_days:
-            df_yr = pd.merge(df_target_yr, df_yr[[anom_col]],
+            '''
+            df_yr_2 = pd.merge(df_target_yr, df_yr[[anom_col]],
                              left_on=['lat', 'lon', df_target_yr['start_date'].dt.month,
                                       df_target_yr['start_date'].dt.day],
                              right_on=[df_yr.lat, df_yr.lon, df_yr['start_date'].dt.month,
                                        df_yr['start_date'].dt.day],
-                             how='left', suffixes=('_target_yr','_'+str(yr)))
+                             how='left',
+                             suffixes=('_target_yr', '_'+str(yr))
+                            )
+           '''
+            df_yr = pd.merge(df_target_yr, df_yr[[anom_col]],
+                             left_on=['lat', 'lon'],
+                             right_on=[df_yr.lat, df_yr.lon],
+                             how='left', 
+                             suffixes=('_target_yr', '_'+str(yr))
+                            )
+            print(df_yr.head())
+            print(df_yr.dtypes)
             cosines = get_col_skill(df_yr, anom_col+'_target_yr', anom_col+'_'+str(yr), time_average=False)
             similar_years = similar_years.append(pd.Series(cosines.mean(), index=[yr]))
 

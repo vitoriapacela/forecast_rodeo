@@ -135,6 +135,12 @@ def get_forecast_variable(gt_id):
         return "prate"
     raise ValueError("Unrecognized gt_id "+gt_id)
 
+    
+def shift_d_(grp_df, cols_to_shift, date_col, shift):
+    grp_df.set_index(grp_df[date_col], inplace=True)
+    grp_df.index = pd.to_datetime(grp_df.index)
+    #print(grp_df.index)
+    return grp_df[cols_to_shift].shift(shift,freq="D")
 
 def shift_df(df, shift=None, date_col='start_date', groupby_cols=['lat', 'lon']):
     """Returns dataframe with all columns save for the date_col and groupby_cols
@@ -155,13 +161,14 @@ def shift_df(df, shift=None, date_col='start_date', groupby_cols=['lat', 'lon'])
         # If any of groupby_cols+[date_col] do not exist, ignore error
         cols_to_shift = df.columns.drop(groupby_cols+[date_col], errors='ignore')
         # Function to shift data frame by shift and extend index
-        shift_df = lambda grp_df: grp_df[cols_to_shift].set_index(grp_df[date_col]).shift(shift,freq="D")
+        #shift_df = lambda grp_df: grp_df[cols_to_shift].set_index(grp_df[date_col]).shift(shift,freq="D")
         if set(groupby_cols).issubset(df.columns):
             # Shift ground truth measurements for each group
             df = df.groupby(groupby_cols).apply(shift_df).reset_index()
         else:
             # Shift ground truth measurements
-            df = shift_df(df).reset_index()
+            #print(df)
+            df = shift_d_(df, cols_to_shift, date_col, shift).reset_index()
         # Rename variables to reflect shift
         df.rename(columns=dict(
             zip(cols_to_shift, [col+"_shift"+str(shift) for col in cols_to_shift])),
@@ -283,7 +290,7 @@ def get_ground_truth_unaggregated(gt_id, mask_df=None, shifts=None):
         for shift in shifts:
             # Shift ground truth measurements by shift for each lat lon and extend index
             gt_shift = gt.groupby(['lat', 'lon']).apply(
-                lambda df: df[[measurement_variable]].set_index(df.start_date).shift(shift,freq="D")).reset_index()
+                lambda df: df[[measurement_variable]].set_index(df.start_date).shift(shift, freq="D")).reset_index()
             # Rename variable to reflect shift
             gt_shift.rename(columns={measurement_variable: measurement_variable +
                                      "_shift"+str(shift)}, inplace=True)
@@ -678,6 +685,7 @@ def year_slice(df, first_year = None, date_col = 'start_date'):
     """
     if first_year is None:
         return df
+    df[date_col] = pd.to_datetime(df[date_col], errors='coerce') # corrected
     years = df[date_col].dt.year
     if first_year <= years.min():
         # No need to slice
@@ -740,7 +748,7 @@ def get_lat_lon_date_features(gt_ids=[], gt_masks=None, gt_shifts=None,
     # Add each ground truth feature to dataframe
     df = None
     for gt_id, gt_mask, gt_shift in zip(gt_ids, gt_masks, gt_shifts):
-        print "Getting {}_shift{}".format(gt_id, gt_shift)
+        print("Getting {}_shift{}".format(gt_id, gt_shift))
         t = time.time()
         # Load ground truth data
         gt = get_ground_truth(gt_id, gt_mask, shift=gt_shift)
@@ -749,13 +757,13 @@ def get_lat_lon_date_features(gt_ids=[], gt_masks=None, gt_shifts=None,
         # Use outer merge to include union of (lat,lon,date_col)
         # combinations across all features
         df = df_merge(df, gt)
-        print "Elapsed: {}s".format(time.time() - t)
+        print("Elapsed: {}s".format(time.time() - t))
 
     # Add each forecast feature to dataframe
     for forecast_id, forecast_mask, forecast_shift in zip(forecast_ids,
                                                           forecast_masks,
                                                           forecast_shifts):
-        print "Getting {}_shift{}".format(forecast_id, forecast_shift)
+        print("Getting {}_shift{}".format(forecast_id, forecast_shift))
         t = time.time()
         # Load forecast with years >= first_year
         forecast = get_forecast(forecast_id, forecast_mask, shift=forecast_shift)
@@ -767,12 +775,12 @@ def get_lat_lon_date_features(gt_ids=[], gt_masks=None, gt_shifts=None,
         # Use outer merge to include union of (lat,lon,date_col)
         # combinations across all features
         df = df_merge(df, forecast)
-        print "Elapsed: {}s".format(time.time() - t)
+        print("Elapsed: {}s".format(time.time() - t))
 
     # Add anomaly features and climatology last so that climatology
     # is produced for all previously added start dates
     for anom_id, anom_mask, anom_shift in zip(anom_ids, anom_masks, anom_shifts):
-        print "Getting {}_shift{} with anomalies".format(anom_id, anom_shift)
+        print("Getting {}_shift{} with anomalies".format(anom_id, anom_shift))
         t = time.time()
         # Check if ground truth column already exists
         gt_col = get_measurement_variable(anom_id, shift=anom_shift)
@@ -788,6 +796,8 @@ def get_lat_lon_date_features(gt_ids=[], gt_masks=None, gt_shifts=None,
         # Load masked ground truth data climatology
         climatology = get_climatology(anom_id, anom_mask, anom_shift)
         # Merge climatology into dataset
+        climatology[date_col] = pd.to_datetime(climatology[date_col], errors='coerce')
+        
         df = pd.merge(df, climatology[[gt_col]],
                       left_on=['lat', 'lon', df[date_col].dt.month,
                                df[date_col].dt.day],
@@ -799,7 +809,7 @@ def get_lat_lon_date_features(gt_ids=[], gt_masks=None, gt_shifts=None,
         # Compute ground-truth anomalies
         anom_col = gt_col+"_anom"
         df[anom_col] = df[gt_col] - df[clim_col]
-        print "Elapsed: {}s".format(time.time() - t)
+        print("Elapsed: {}s".format(time.time() - t))
 
     return df
 
@@ -831,7 +841,7 @@ def get_date_features(gt_ids=[], gt_masks=None, gt_shifts=None, first_year=None)
     # Add each ground truth feature to dataframe
     df = None
     for gt_id, gt_mask, gt_shift in zip(gt_ids, gt_masks, gt_shifts):
-        print "Getting {}_shift{}".format(gt_id, gt_shift)
+        print("Getting {}_shift{}".format(gt_id, gt_shift))
         t = time.time()
         # Load ground truth data
         gt = get_ground_truth(gt_id, gt_mask, gt_shift)
@@ -855,7 +865,7 @@ def get_date_features(gt_ids=[], gt_masks=None, gt_shifts=None, first_year=None)
         # Use outer merge to include union of start_date values across all features
         # combinations across all features
         df = df_merge(df, gt, on="start_date")
-        print "Elapsed: {}s".format(time.time() - t)
+        print("Elapsed: {}s".format(time.time() - t))
 
     return df
 
@@ -887,14 +897,14 @@ def get_lat_lon_features(gt_ids=[], gt_masks=None):
 
     df = None
     for gt_id, gt_mask in zip(gt_ids, gt_masks):
-        print "Getting {}".format(gt_id)
+        print("Getting {}".format(gt_id))
         t = time.time()
         # Load ground truth data
         gt = get_lat_lon_gt(gt_id, gt_mask)
         # Use outer merge to include union of (lat,lon,date_col)
         # combinations across all features
         df = df_merge(df, gt, on=["lat", "lon"])
-        print "Elapsed: {}s".format(time.time() - t)
+        print("Elapsed: {}s".format(time.time() - t))
     return df
 
 
@@ -965,10 +975,10 @@ def create_lat_lon_date_data(gt_id,
     # --------
     # Load mask indicating which grid points count in the contest (1=in, 0=out)
     # --------
-    print "Loading contest mask"
+    print("Loading contest mask")
     t = time.time()
     mask_df = get_contest_mask()
-    print "Elapsed: {}s".format(time.time() - t)
+    print("Elapsed: {}s".format(time.time() - t))
 
     # --------
     # Creates and saves lat_lon_date_data dataframe
@@ -976,7 +986,7 @@ def create_lat_lon_date_data(gt_id,
     # Load masked lat lon date features restricted to years >= get_first_year(gt_id)
     # Note: contest lat lon date features and forecasts are pre-masked, so there
     # is no need to mask explcitily
-    print "Loading lat lon date features"
+    print("Loading lat lon date features")
     num_gt_ids = len(past_gt_ids)
     # For each measurement,
     # get number of days between start date of observation period used for prediction
@@ -1008,7 +1018,7 @@ def create_lat_lon_date_data(gt_id,
         first_year=get_first_year(gt_id)
     )
 
-    print "Loading additional lat lon date features"
+    print("Loading additional lat lon date features")
     t = time.time()
     # Add CFSv2 mean as feature
     if 'cfsv2' in forecast_models:
@@ -1023,16 +1033,16 @@ def create_lat_lon_date_data(gt_id,
     lat_lon_date_data[anom_inv_std_col] = \
         1.0/lat_lon_date_data.groupby(["start_date"])[anom_col].transform('std')
 
-    print "Elapsed: {}s".format(time.time() - t)
+    print("Elapsed: {}s".format(time.time() - t))
 
     # Save lat lon date features to disk
-    print "Saving lat lon date features to "+lat_lon_date_data_file
+    print("Saving lat lon date features to "+lat_lon_date_data_file)
     t = time.time()
     lat_lon_date_data.to_hdf(lat_lon_date_data_file, key="data", mode="w")
     subprocess.call("chmod a+w "+lat_lon_date_data_file, shell=True)
-    print "Elapsed: {}s".format(time.time() - t)
-    print "Finished generating lat_lon_date_data matrix."
-    print "Total time elapsed: {}s".format(time.time()-time_start)
+    print("Elapsed: {}s".format(time.time() - t))
+    print("Finished generating lat_lon_date_data matrix.")
+    print("Total time elapsed: {}s".format(time.time()-time_start))
     return list(lat_lon_date_data)
 
 
@@ -1089,15 +1099,15 @@ def load_lat_lon_date_data(gt_id,
     # parameters as given to this function; we need to hash the features into
     # the filenames
     if regen or not os.path.isfile(lat_lon_date_data_file):
-        print "Creating lat_lon_date_data_matrix"
+        print("Creating lat_lon_date_data_matrix")
         create_lat_lon_date_data(gt_id, target_horizon, experiment, past_gt_ids,
                                  forecast_models, other_lat_lon_date_features)
-        print ""
+        print("")
 
     # ---------------
     # Read lat_lon_date_data_file from disk
     # ---------------
-    print "Reading file "+lat_lon_date_data_file
+    print("Reading file "+lat_lon_date_data_file)
     tic()
     lat_lon_date_data = pd.read_hdf(lat_lon_date_data_file)
     toc()
@@ -1150,36 +1160,36 @@ def create_lat_lon_data(gt_id,
     # --------
     # Load mask indicating which grid points count in the contest (1=in, 0=out)
     # --------
-    print "Loading contest mask"
+    print("Loading contest mask")
     t = time.time()
     mask_df = get_contest_mask()
-    print "Elapsed: {}s".format(time.time() - t)
+    print("Elapsed: {}s".format(time.time() - t))
 
     # --------
     # Creates lat_lon_data dataframe.
     # --------
     # Load masked lat lon features
-    print "Loading lat lon features"
+    print("Loading lat lon features")
     lat_lon_data = get_lat_lon_features(gt_ids=lat_lon_features, gt_masks=mask_df)
     # Convert qualitative variable (climate_region) to dummies; all dummies included
     if lat_lon_features:
         lat_lon_data = pd.get_dummies(lat_lon_data,
                                       columns=["climate_region"],
                                       drop_first=False)
-        print "Saving lat lon features to "+lat_lon_data_file
+        print("Saving lat lon features to "+lat_lon_data_file)
         t = time.time()
         # Save lat lon features to disk
         lat_lon_data.to_hdf(lat_lon_data_file, key="data", mode="w")
         subprocess.call("chmod a+w "+lat_lon_data_file, shell=True)
-        print "Elapsed: {}s".format(time.time() - t)
+        print("Elapsed: {}s".format(time.time() - t))
     else:
-        print "No lat lon features requested"
+        print("No lat lon features requested")
         # Delete any old version of the data
         if os.path.isfile(lat_lon_data_file):
             os.remove(lat_lon_data_file)
 
-    print "Finished generating lat_lon_data matrix."
-    print "Total time elapsed: {}s".format(time.time()-time_start)
+    print("Finished generating lat_lon_data matrix.")
+    print("Total time elapsed: {}s".format(time.time()-time_start))
     return list(lat_lon_data) if lat_lon_features else 0
 
 
@@ -1224,14 +1234,14 @@ def load_lat_lon_data(gt_id,
     # parameters as given to this function; we need to hash the features into
     # the filenames
     if regen or not os.path.isfile(lat_lon_data_file):
-        print "Creating lat_lon_data_matrix"
+        print("Creating lat_lon_data_matrix")
         create_lat_lon_data(gt_id, target_horizon, experiment, lat_lon_features)
-        print ""
+        print("")
 
     # ---------------
     # Read lat_lon_data_file from disk
     # ---------------
-    print "Reading file "+lat_lon_data_file
+    print("Reading file "+lat_lon_data_file)
     tic()
     lat_lon_data = pd.read_hdf(lat_lon_data_file)
     toc()
@@ -1291,27 +1301,27 @@ def create_date_data(gt_id,
                     for gt_id in date_features]
 
     # Load masked date features
-    print "Loading date features"
+    print("Loading date features")
     date_data = get_date_features(gt_ids=date_features, gt_shifts=start_deltas,
                                   first_year=get_first_year(gt_id))
 
-    print "Loading additional date features"
+    print("Loading additional date features")
     t = time.time()
     if 'mjo' in date_features:
         # Add cosine and sine transforms of MJO phase
         mjo_phase_name = 'phase_shift'+str(get_start_delta(target_horizon, 'mjo'))
         date_data['cos_'+mjo_phase_name] = np.cos((2*np.pi*date_data[mjo_phase_name])/8)
         date_data['sin_'+mjo_phase_name] = np.sin((2*np.pi*date_data[mjo_phase_name])/8)
-    print "Elapsed: {}s".format(time.time() - t)
+    print("Elapsed: {}s".format(time.time() - t))
     # Save date features to disk
-    print "Saving date features to "+date_data_file
+    print("Saving date features to "+date_data_file)
     t = time.time()
     date_data.to_hdf(date_data_file, key="data", mode="w")
     subprocess.call("chmod a+w "+date_data_file, shell=True)
-    print "Elapsed: {}s".format(time.time() - t)
+    print("Elapsed: {}s".format(time.time() - t))
 
-    print "Finished generating date_data matrix."
-    print "Total time elapsed: {}s".format(time.time()-time_start)
+    print("Finished generating date_data matrix.")
+    print("Total time elapsed: {}s".format(time.time()-time_start))
     return list(date_data)
 
 
@@ -1362,14 +1372,14 @@ def load_date_data(gt_id,
     # parameters as given to this function; we need to hash the features into
     # the filenames
     if regen or not os.path.isfile(date_data_file):
-        print "Creating date_data_matrix"
+        print("Creating date_data_matrix")
         create_date_data(gt_id, target_horizon, experiment, date_features)
-        print ""
+        print("")
 
     # ---------------
     # Read date_data_file from disk
     # ---------------
-    print "Reading file "+date_data_file
+    print("Reading file "+date_data_file)
     tic()
     date_data = pd.read_hdf(date_data_file)
     toc()
@@ -1422,19 +1432,19 @@ def create_sub_data(gt_id,
     lat_lon_data_file = os.path.join(
         cache_dir, "lat_lon_data-{}_{}.h5".format(gt_id, target_horizon))
 
-    print "Reading saved features from {}".format(date_data_file)
+    print("Reading saved features from {}".format(date_data_file))
     t = time.time()
     date_data = pd.read_hdf(date_data_file)
     flush_print("Elapsed: {}s".format(time.time() - t))
     if os.path.isfile(lat_lon_data_file):
-        print "Reading saved features from {}".format(lat_lon_data_file)
+        print("Reading saved features from {}".format(lat_lon_data_file))
         t = time.time()
         lat_lon_data = pd.read_hdf(lat_lon_data_file)
         flush_print("Elapsed: {}s".format(time.time() - t))
     else:
         lat_lon_data = None
-        print "No lat lon data"
-    print "Reading saved features from {}".format(lat_lon_date_data_file)
+        print("No lat lon data")
+    print("Reading saved features from {}".format(lat_lon_date_data_file))
     t = time.time()
     lat_lon_date_data = pd.read_hdf(lat_lon_date_data_file)
     flush_print("Elapsed: {}s".format(time.time() - t))
@@ -1462,7 +1472,7 @@ def create_sub_data(gt_id,
     # ---------------
     # Only include rows with year >= the first year in which gt target data is available
     first_year = get_first_year(gt_id)
-    print "Subsetting lat lon date data with margin_in_days {}".format(margin_in_days)
+    print("Subsetting lat lon date data with margin_in_days {}".format(margin_in_days))
     t = time.time()
     # Restrict data to entries matching target month and day (all years)
     # First, subset lat_lon_date_data
@@ -1471,7 +1481,7 @@ def create_sub_data(gt_id,
         target_date_obj, margin_in_days)
     flush_print("Elapsed: {}s".format(time.time() - t))
     # Second, integrate date_data
-    print "Subsetting date data with margin_in_days {}".format(margin_in_days)
+    print("Subsetting date data with margin_in_days {}".format(margin_in_days))
     t = time.time()
     sub_date_data = month_day_subset(
         date_data[date_data.start_date.dt.year >= first_year],
@@ -1479,18 +1489,18 @@ def create_sub_data(gt_id,
     flush_print("Elapsed: {}s".format(time.time() - t))
     # Use outer merge to merge lat_lon_date_data and date_data,
     # including the union of start dates
-    print "Merging sub date data into sub data"; t = time.time()
+    print("Merging sub date data into sub data", t = time.time())
     sub_data = pd.merge(sub_data, sub_date_data, on="start_date", how="outer")
     flush_print("Elapsed: {}s".format(time.time() - t))
     # Third, integrate lat_lon_data
     sub_lat_lon_data = lat_lon_data
     if sub_lat_lon_data is not None:
-        print "Merging sub lat lon data into sub data"; t = time.time()
+        print("Merging sub lat lon data into sub data", t = time.time())
         sub_data = pd.merge(sub_data, sub_lat_lon_data,
                             on=["lat", "lon"], how="outer")
         flush_print("Elapsed: {}s".format(time.time() - t))
 
-    print "Adding additional sub data features"; t = time.time()
+    print("Adding additional sub data features", t = time.time())
     # Add year column to dataset
     sub_data['year'] = sub_data.start_date.dt.year
     # Add month column to dataset
@@ -1508,13 +1518,13 @@ def create_sub_data(gt_id,
     flush_print("Elapsed: {}s".format(time.time() - t))
 
     # Save subset data to disk
-    print "Saving subset data to "+sub_data_file; t = time.time()
+    print("Saving subset data to "+sub_data_file, t = time.time())
     sub_data.to_hdf(sub_data_file, key="data", mode="w")
     subprocess.call("chmod a+w "+sub_data_file, shell=True)
     flush_print("Elapsed: {}s".format(time.time() - t))
 
-    print "Finished generating sub data matrix."
-    print "Total time elapsed: {}s".format(time.time()-time_start)
+    print("Finished generating sub data matrix.")
+    print("Total time elapsed: {}s".format(time.time()-time_start))
     return list(sub_data)
 
 
@@ -1560,18 +1570,18 @@ def load_sub_data(gt_id,
     # Check if subdata matrix already exists, otherwise regenerate it
     # ---------------
     if regen or not os.path.isfile(sub_data_file):
-        print "Creating sub_data"
+        print("Creating sub_data")
         create_sub_data(gt_id, target_horizon, submission_date,
                         experiment, margin_in_days)
-        print ""
+        print("")
 
     # ---------------
     # Read saved subset features from disk
     # ---------------
-    print "Reading saved subset features from "+sub_data_file
+    print("Reading saved subset features from "+sub_data_file)
     t = time.time()
     sub_data = pd.read_hdf(sub_data_file)
-    print "Elapsed: {}s".format(time.time() - t)
+    print("Elapsed: {}s".format(time.time() - t))
 
     # print any data missing in target_date
     print_missing_cols_func(sub_data, target_date_obj, print_missing_cols)
@@ -1583,7 +1593,7 @@ def print_missing_cols_func(df, target_date_obj, print_missing_cols):
     if print_missing_cols is True:
         missing_cols_in_target_date = df.loc[df["start_date"] == target_date_obj].isnull().any()
         if sum(missing_cols_in_target_date) > 0:
-            print ""
-            print "There is missing data for target_date. The following variables are missing: {}"\
-                            .format(df.columns[missing_cols_in_target_date].tolist())
-            print ""
+            print("")
+            print("There is missing data for target_date. The following variables are missing: {}"\
+                            .format(df.columns[missing_cols_in_target_date].tolist()))
+            print("")

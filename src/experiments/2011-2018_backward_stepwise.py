@@ -42,30 +42,34 @@ from skill import *
 # Load functionality for stepwise regression
 from stepwise_util import *
 
+# Ensure correct working directory
+if os.path.basename(os.getcwd()) == "experiments":
+    os.chdir(os.path.join("..",".."))
+    
 # Command-line inputs
 gt_id = "contest_tmp2m" if len(sys.argv) < 2 else sys.argv[1]
-print gt_id
+print(gt_id)
 target_horizon = "34w" if len(sys.argv) < 3 else sys.argv[2]
-print target_horizon
+print(target_horizon)
 margin_in_days = 56 if len(sys.argv) < 4 else int(sys.argv[3])
-print margin_in_days
+print(margin_in_days)
 criterion = 'mean' if len(sys.argv) < 5 else sys.argv[4]
-print criterion
+print(criterion)
 hindcast_features = False if len(sys.argv) < 6 else (sys.argv[5] == "True")
-print hindcast_features
+print(hindcast_features)
 submission_date_str = '20110418' if len(sys.argv) < 7 else sys.argv[6]
-print submission_date_str
+print(submission_date_str)
 submission_date_obj = datetime.strptime(submission_date_str, "%Y%m%d")
 # Get target date as a datetime object
 target_date_obj = get_target_date(submission_date_str, target_horizon)
-print 'target date: {}'.format(target_date_obj)
+print('target date: {}'.format(target_date_obj))
 num_cores = 16 if len(sys.argv) < 8 else int(sys.argv[7])
-print num_cores
+print(num_cores)
 
 if hindcast_features:
-    print "Using hindcast features"
+    print("Using hindcast features")
 else:
-    print "Using forecast features"
+    print("Using forecast features")
     
 # Experiment name
 experiment = "regression"
@@ -119,8 +123,8 @@ use_margin = False
 param_str = 'margin{}-{}-{}'.format(
     margin_in_days, criterion, str(abs(hash(frozenset(initial_candidate_x_cols)))))
 # Create directory for storing results
-outdir = os.path.join('results',experiment,'2011-2018',
-                      gt_id+'_'+target_horizon,'backward_stepwise',
+outdir = os.path.join('results', experiment, '2011-2018',
+                      gt_id+'_'+target_horizon, 'backward_stepwise',
                       param_str)
 if not os.path.exists(outdir):
     os.makedirs(outdir)
@@ -128,7 +132,7 @@ if not os.path.exists(outdir):
 converged_outfile = os.path.join(outdir, 'converged-'+submission_date_str)
 if os.path.exists(converged_outfile):
     # If algorithm has already converged previously, exit
-    print '{} already exists; exiting.'.format(converged_outfile)
+    print('{} already exists; exiting.'.format(converged_outfile))
     sys.exit()
 
 #
@@ -193,12 +197,12 @@ sub_data['target'] = (sub_data[clim_col] - sub_data[base_col] +
 # Subset to datapoints with valid target and sample weights
 sub_data = sub_data.dropna(subset=['target','sample_weight'])
 toc()
-print sub_data.head()
+print(sub_data.head())
 # Print warning if not all x columns were included
 s = [x for x in candidate_x_cols if x not in sub_data.columns.tolist()]
 if s:
-    print "These x columns were not found:"
-    print s
+    print("These x columns were not found:")
+    print(s)
 
 #
 # Fit backward stepwise regression
@@ -208,7 +212,7 @@ preds_outfile = os.path.join(outdir, submission_date_str+'.h5')
 stats_outfile = os.path.join(outdir, 'stats-'+submission_date_str+'.pkl')
 if os.path.exists(preds_outfile) and os.path.exists(stats_outfile):
     # If preds and stats already exist on disk, load them and start from the latest model
-    print 'Loading existing predictions and stats'
+    print('Loading existing predictions and stats')
     path_preds = pd.read_hdf(preds_outfile, key="data")
     path_stats = pickle.load( open( stats_outfile, "rb" ) )
     # The set of predictors in the latest model is specified by the last column name in
@@ -216,15 +220,15 @@ if os.path.exists(preds_outfile) and os.path.exists(stats_outfile):
     current_x_col_str = path_preds.columns[-1]
     current_x_col_set = eval(current_x_col_str)
     x_cols_current = list(current_x_col_set)
-    print x_cols_current
+    print(x_cols_current)
     # Enumerate non-model columns in path_preds
     non_model_cols = ['lat','lon','start_date','truth','clim']
     # Find the last feature removed from x cols
     best_x_col = set(candidate_x_cols).symmetric_difference(current_x_col_set).pop() if (len(path_preds.columns)-len(non_model_cols)) == 1 else current_x_col_set.symmetric_difference(eval(path_preds.columns[-2])).pop()
-    print best_x_col
+    print(best_x_col)
     # Reconstruct the current best criterion
     best_criterion_current = path_stats[current_x_col_str][criterion][best_x_col]
-    print best_criterion_current
+    print(best_criterion_current)
 else:
     path_preds = sub_data.loc[sub_data.start_date == target_date_obj, 
                               ['lat','lon','start_date',anom_col,clim_col]].copy()
@@ -247,7 +251,7 @@ while not converged:
     relevant_cols = set(
         x_cols_current+[base_col,clim_col,anom_col,'sample_weight','target',
                         'start_date','lat','lon','year','ones']+group_by_cols)
-    print "Fitting model with core predictors {}".format(x_cols_current); 
+    print("Fitting model with core predictors {}".format(x_cols_current)); 
     tic()
     preds = apply_parallel(
         sub_data.loc[:,relevant_cols].groupby(group_by_cols),
@@ -289,7 +293,7 @@ while not converged:
     # Remove from model
     x_cols_current.remove(best_x_col)
     best_criterion_current = criteria[best_x_col]
-    print "Removed {} from model, current criterion is {}".format(best_x_col, best_criterion_current)
+    print(("Removed {} from model, current criterion is {}".format(best_x_col, best_criterion_current)))
     tic()
     # Store the predictions of the selected model
     path_preds = pd.merge(path_preds, 
@@ -319,5 +323,5 @@ while not converged:
 
     
 # Mark convergence by creating converged file
-print 'Saving ' + converged_outfile
+print('Saving ' + converged_outfile)
 open(converged_outfile, 'w').close()
